@@ -1,0 +1,27 @@
+:toc:
+:sectnums:
+:toclevels: 5
+:sectnumlevels: 5
+:showcomments:
+:xrefstyle: short
+:icons: font
+:source-highlighter: coderay
+:tick: &#x2714;
+:pound: &#xA3;
+
+= Process Environment Block
+
+The process environment block in Windows is a block of memory within a process which contains basic information about that process.
+
+
+== WinDbg
+
+If you install WinDbg, you can see the process environment block easily with the `!peb` command.
+
+
+[source,csharp]
+----
+using System;
+using System.Text;
+----
+
