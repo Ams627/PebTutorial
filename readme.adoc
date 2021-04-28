@@ -11,7 +11,97 @@
 
 = Process Environment Block
 
-The process environment block in Windows is a block of memory within a process which contains basic information about that process.
+The _Process Environment Block_ in Windows is a structure within any running process which contains basic information about that process.
+It can be read using the
+https://en.wikipedia.org/wiki/Native_API[NT (Native) API] function 
+https://docs.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntqueryinformationprocess[`NtQueryInformationProcess`].
+
+`NtQueryInformationProcess` is an internal function and as docs.microsoft.com notes, it may not be available in future versions of
+Windows. However, since it has been around for at least two decades, it is unlikely this function will disappear any time soon
+and a search of github reveals 43,683 usages.
+
+== `NtQueryInformationProcess`
+
+`NtQueryInformationProcess` cannot be accessed directly as it is not exported from `ntdll.dll` - therefore it must be
+accessed by Run-Time Dynamic Linking. This involves using the Win32 functions
+https://docs.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-loadlibrarya[`LoadLibrary`] and 
+https://docs.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-getprocaddress[`GetProcAddress`].
+
+
+First of all we need to define the type of a pointer to `NtQueryInformationProcess` as follows (the type is the type of a
+pointer to a function).
+
+[source,cpp]
+----
+typedef __kernel_entry NTSTATUS (NTAPI *TNtQueryInformationProcess)(
+	HANDLE           ProcessHandle,
+	PROCESSINFOCLASS ProcessInformationClass,
+	PVOID            ProcessInformation,
+	ULONG            ProcessInformationLength,
+	PULONG           ReturnLength
+);
+----
+
+Then we declare a variable of that type to receive the address of NtQueryInformationProcess from the DLL.
+[source,cpp]
+----
+TNtQueryInformationProcess pNtQueryInformationProcess = 0;
+----
+
+Finally, we can call the function as follows:
+
+[source,cpp]
+----
+LPVOID address;
+auto ntStatus = pNtQueryInformationProcess(handle, ProcessWow64Information, &address, sizeof(LPVOID), NULL);
+----
+
+=== `PROCESSINFOCLASS`
+
+`PROCESSINFOCLASS` is defined as follows (in winternl.h):
+
+[source,cpp]
+----
+
+typedef enum _PROCESSINFOCLASS {
+    ProcessBasicInformation = 0,
+    ProcessDebugPort = 7,
+    ProcessWow64Information = 26,
+    ProcessImageFileName = 27,
+    ProcessBreakOnTermination = 29
+} PROCESSINFOCLASS;
+----
+
+== WOW64
+
+It is possible to run 32-bit Windows applications on 64-bit Windows installations using an emulation 
+layer called WOW64 (**W**indows **o**n **W**indows 64). As an example, all versions of Visual Studio before Visual Studio 2022
+are 32-bit applications. You can see this in Task Manager by adding the _Platform_ column and checking the `devenv.exe` process.
+
+The information returned by `NtQueryInformationProcess` is slightly different between 32-bit and 64-bit processes.
+
+In order to determine if a process is a WOW64 process (in other words if the process is a 32-bit process running on 
+a 64-bit system), we can call either 
+https://docs.microsoft.com/en-us/windows/win32/api/wow64apiset/nf-wow64apiset-iswow64process[`IsWow64Process`]
+https://docs.microsoft.com/en-us/windows/win32/api/wow64apiset/nf-wow64apiset-iswow64process2[`IsWow64Process2`].
+
+However, if we **need** to use `NtQueryInformationProcess` in our application for other purposes (such as reading the 
+current directory of a process), we can call it with the `ProcessInformationClass` set to `ProcessWow64Information`.
+We also pass a `ULONG_PTR` as a buffer. If the value returned in the buffer is zero, then the process is **NOT**
+running under WOW64. If the value returned is non-zero, it is the address of the Process Environment Block within
+the process memory.
+
+== `ReadProcessMemory`
+
+On Windows, it is possible to read the memory of another process (if you have the right permission), and some information
+about the process (such as the process's current directory) is only available via this call.
+
+== Process PID and HANDLE.
+
+All processes have a PID (Process ID). PIDs are arbitrary integers which are
+reused when a process terminates (often very soon). If you want to perform operations on 
+a process or query the process using the Win32 API, you need to obtain 
+a process `HANDLE`. This can be obtained by calling `OpenProcess` and passing the PID. 
 
 
 == WinDbg
